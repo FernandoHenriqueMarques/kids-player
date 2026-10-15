@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kids Player</title>
+<!--
+  Página HOSPEDADA (GitHub Pages ou servidor no Mac).
+  Ela é quem embute o YouTube, para que o embed tenha um Referer/origem válido.
+  O app Tizen carrega esta página num iframe e manda comandos via postMessage.
+
+  Uso: player.html?v=ID_DO_VIDEO   (sem ?v= usa o vídeo padrão)
+  JS em estilo ES5 de propósito: o motor web do Tizen 5.0 é um Chromium antigo.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+  #player, #player iframe { position: absolute; inset: 0; width: 100%; height: 100%; top: 0; left: 0; border: 0; }
+  /* Bloqueia qualquer clique/ponteiro sobre o player (título, logo, links do YouTube) */
+  #blocker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; }
+  /* Tela própria que cobre o player ao pausar/terminar, escondendo "mais vídeos" do YouTube */
+  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
+             display: none; align-items: center; justify-content: center; flex-direction: column;
+             background: #0d1b3d; color: #fff; text-align: center; }
+  #overlay.show { display: flex; }
+  #overlay .big { font-size: 64px; margin-bottom: 24px; }
+  #overlay .msg { font-size: 40px; }
+  #overlay .hint { font-size: 28px; opacity: .7; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<div id="blocker"></div>
+<div id="overlay">
+  <div class="big" id="ovIcon">⏸</div>
+  <div class="msg" id="ovMsg">Pausado</div>
+  <div class="hint">Aperte OK para continuar</div>
+</div>
+
+<script>
+  var DEFAULT_VIDEO = 'z3hMX65Khtg';
+
+  function getParam(name) {
+    var m = new RegExp('[?&]' + name + '=([^&]+)').exec(window.location.search);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  var videoId = getParam('v') || DEFAULT_VIDEO;
+  var player = null;
+  var ready = false;
+  var ended = false;
+
+  var overlay = document.getElementById('overlay');
+  function showOverlay(icon, msg) {
+    document.getElementById('ovIcon').textContent = icon;
+    document.getElementById('ovMsg').textContent = msg;
+    overlay.className = 'show';
+  }
+  function hideOverlay() { overlay.className = ''; }
+
+  // Avisa o app Tizen (janela pai) sobre o estado
+  function notify(type, data) {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ source: 'kids-player', type: type, data: data }, '*');
+    }
+  }
+
+  // Carrega a IFrame API do YouTube
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  window.onYouTubeIframeAPIReady = function () {
+    player = new YT.Player('player', {
+      videoId: videoId,
+      host: 'https://www.youtube-nocookie.com',
+      playerVars: {
+        autoplay: 1,
+        controls: 0,        // sem barra de controle (o controle remoto comanda)
+        rel: 0,             // relacionados só do mesmo canal (e nós cobrimos o fim)
+        fs: 0,
+        disablekb: 1,
+        iv_load_policy: 3,  // sem anotações
+        playsinline: 1,
+        origin: window.location.origin
+      },
+      events: {
+        onReady: function () {
+          ready = true;
+          player.playVideo();
+          notify('ready', { videoId: videoId });
+          // Se o autoplay foi bloqueado, mostra a tela pedindo OK
+          setTimeout(function () {
+            if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
+              showOverlay('▶', 'Pronto!');
+            }
+          }, 4000);
+        },
+        onStateChange: function (e) {
+          notify('state', e.data);
+          if (e.data === YT.PlayerState.PLAYING) {
+            ended = false;
+            hideOverlay();
+          } else if (e.data === YT.PlayerState.PAUSED) {
+            showOverlay('⏸', 'Pausado');
+          } else if (e.data === YT.PlayerState.ENDED) {
+            // Nunca deixa a tela final do YouTube (com sugestões) aparecer
+            ended = true;
+            player.seekTo(0, true);
+            player.pauseVideo();
+            showOverlay('⭐', 'Acabou!');
+          }
+        },
+        onError: function (e) {
+          // 2: ID inválido | 5: erro HTML5 | 100: removido | 101/150: embed proibido | 153: falta referer
+          notify('error', e.data);
+          showOverlay('⚠', 'Não foi possível tocar (erro ' + e.data + ')');
+        }
+      }
+    });
+  };
+
+  // ---- Comandos ----
+  var commands = {
+    toggle: function () {
+      if (!ready) return;
+      var s = player.getPlayerState();
+      if (s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
+    },
+    play:  function () { if (ready) player.playVideo(); },
+    pause: function () { if (ready) player.pauseVideo(); },
+    stop:  function () { if (ready) { player.seekTo(0, true); player.pauseVideo(); } },
+    seek:  function (sec) {
+      if (!ready) return;
+      var t = Math.max(0, player.getCurrentTime() + sec);
+      player.seekTo(t, true);
+    },
+    load:  function (id) { if (ready && id) { videoId = id; player.loadVideoById(id); } }
+  };
+
+  // Comandos vindos do app Tizen
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.target !== 'kids-player' || !commands[d.cmd]) return;
+    commands[d.cmd](d.arg);
+  });
+
+  // Teclado: para testar no navegador do Mac abrindo esta página direto
+  document.addEventListener('keydown', function (e) {
+    switch (e.keyCode) {
+      case 13: case 32: commands.toggle(); break;
+      case 37: commands.seek(-10); break;
+      case 39: commands.seek(10); break;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>Kids Player</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  /* O iframe não recebe foco nem ponteiro: as teclas do controle ficam com este documento */
+  #frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  #status { position: absolute; bottom: 24px; left: 24px; color: #fff; font: 24px sans-serif;
+            background: rgba(0,0,0,.6); padding: 8px 16px; border-radius: 8px; display: none; z-index: 2; }
+</style>
+</head>
+<body>
+<iframe id="frame" tabindex="-1" allow="autoplay; encrypted-media; fullscreen"></iframe>
+<div id="status"></div>
+<script src="js/main.js"></script>
+</body>
+</html>

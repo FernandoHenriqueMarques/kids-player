@@ -1,0 +1,5 @@
+Debug/
+*.wgt
+.DS_Store
+.sign/
+*.code-workspace

@@ -1,0 +1,23 @@
+{
+  "projectDir": "/Users/fernandomarques/Projects/kids-player/KidsPlayer",
+  "deploys": {
+    "next": [
+      {
+        "path": "Debug/projects/KidsPlayer/config.xml",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/KidsPlayer/icon.png",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/KidsPlayer/index.html",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/KidsPlayer/js/main.js",
+        "type": "add"
+      }
+    ]
+  }
+}
