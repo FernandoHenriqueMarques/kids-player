@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon</title>
+<!--
+  App hospedado: catálogo + player na mesma página.
+  O app Tizen só carrega esta página e repassa as teclas do controle via postMessage,
+  então mudanças aqui chegam à TV com um git push, sem reinstalar.
+  JS em ES5 de propósito (Tizen 5.0 = Chromium antigo).
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b1530; color: #fff; font-family: "Trebuchet MS", sans-serif; overflow: hidden; }
+
+  /* ---------- Catálogo ---------- */
+  #catalog { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
+  #scroller { position: absolute; left: 0; right: 0; top: 0; padding: 2.5vw 4vw 6vw; transition: transform .25s ease; }
+  .section { font-size: 2.2vw; font-weight: bold; color: #ffcb05; margin: 1.6vw 0 1.2vw; letter-spacing: .05vw; }
+  .grid { display: flex; flex-wrap: wrap; margin: 0 -1vw; }
+  .card { position: relative; width: 21vw; margin: 0 1vw 2vw; border-radius: 1vw; background: #16234a;
+          transition: transform .15s ease, box-shadow .15s ease; }
+  .card img { display: block; width: 100%; height: 11.8vw; object-fit: cover; border-radius: 1vw 1vw 0 0; background: #24356b; }
+  .num { position: absolute; left: .8vw; top: 7.6vw; min-width: 4.6vw; height: 4.6vw; padding: 0 .9vw; border-radius: 2.3vw;
+         background: #ffcb05; color: #0b1530; font-size: 3vw; font-weight: bold; line-height: 4.6vw; text-align: center;
+         box-shadow: 0 .3vw .8vw rgba(0,0,0,.5); }
+  .name { font-size: 1.15vw; padding: .8vw 1vw 1vw; color: #c9d3f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seen { position: absolute; right: .8vw; top: .8vw; width: 3vw; height: 3vw; border-radius: 50%; background: #2fbf71;
+          color: #fff; font-size: 2vw; line-height: 3vw; text-align: center; display: none; }
+  .card.watched .seen { display: block; }
+  .card.watched img { opacity: .75; }
+  .card.focus { transform: scale(1.08); box-shadow: 0 0 0 .45vw #ffcb05, 0 1vw 2.5vw rgba(0,0,0,.6); z-index: 2; }
+  .card.focus .name { color: #fff; }
+
+  /* ---------- Player ---------- */
+  #playerWrap { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: none; z-index: 20; }
+  #playerWrap.show { display: block; }
+  #player, #player iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+  #blocker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; }
+  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none;
+             align-items: center; justify-content: center; flex-direction: column; background: #0b1530; text-align: center; }
+  #overlay.show { display: flex; }
+  #ovNum { font-size: 9vw; font-weight: bold; color: #ffcb05; line-height: 1; }
+  #ovIcon { font-size: 6vw; margin: 1.5vw 0; }
+  #ovMsg { font-size: 2.2vw; color: #c9d3f0; }
+  #toast { position: absolute; bottom: 3vw; left: 50%; transform: translateX(-50%); z-index: 30; display: none;
+           background: rgba(0,0,0,.7); padding: 1vw 2vw; border-radius: 1vw; font-size: 2vw; }
+</style>
+</head>
+<body>
+
+<div id="catalog"><div id="scroller"></div></div>
+
+<div id="playerWrap">
+  <div id="player"></div>
+  <div id="blocker"></div>
+  <div id="overlay">
+    <div id="ovNum"></div>
+    <div id="ovIcon">⏸</div>
+    <div id="ovMsg"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  var episodes = [];
+  var cards = [];
+  var focusIdx = 0;
+  var mode = 'catalog';          // 'catalog' | 'player'
+  var current = null;            // episódio tocando
+  var player = null, ytReady = false, playerReady = false, pendingId = null;
+  var STORE = 'pokemon-kids-v1';
+
+  // ---------- Estado salvo (por TV) ----------
+  var state = { watched: {}, last: 0 };
+  try { var s = JSON.parse(localStorage.getItem(STORE)); if (s) state = s; } catch (e) {}
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+  function $(id) { return document.getElementById(id); }
+  function notify(type, data) {
+    if (window.parent && window.parent !== window) window.parent.postMessage({ source: 'kids-app', type: type, data: data }, '*');
+  }
+  var toastTimer;
+  function toast(t) {
+    var el = $('toast'); el.textContent = t; el.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.style.display = 'none'; }, 1500);
+  }
+
+  // ---------- Catálogo ----------
+  function render() {
+    var scroller = $('scroller'), lastSeason = null, grid = null;
+    for (var i = 0; i < episodes.length; i++) {
+      var ep = episodes[i];
+      if (ep.season !== lastSeason) {
+        var h = document.createElement('div'); h.className = 'section'; h.textContent = ep.season;
+        scroller.appendChild(h);
+        grid = document.createElement('div'); grid.className = 'grid'; scroller.appendChild(grid);
+        lastSeason = ep.season;
+      }
+      var c = document.createElement('div');
+      c.className = 'card' + (state.watched[ep.id] ? ' watched' : '');
+      c.innerHTML = '<img src="https://i.ytimg.com/vi/' + ep.id + '/mqdefault.jpg" alt="">' +
+                    '<div class="num">' + ep.n + '</div><div class="seen">✓</div>' +
+                    '<div class="name"></div>';
+      c.querySelector('.name').textContent = ep.title;
+      grid.appendChild(c);
+      cards.push(c);
+    }
+    setFocus(Math.min(state.last || 0, cards.length - 1));
+  }
+
+  function setFocus(i) {
+    if (i < 0 || i >= cards.length) return;
+    if (cards[focusIdx]) cards[focusIdx].className = cards[focusIdx].className.replace(' focus', '');
+    focusIdx = i;
+    cards[i].className += ' focus';
+    // Rola para manter o card no terço superior da tela
+    var target = cards[i].offsetTop + cards[i].parentNode.offsetTop - window.innerHeight * 0.28;
+    var max = $('scroller').offsetHeight - window.innerHeight;
+    target = Math.max(0, Math.min(target, Math.max(0, max)));
+    $('scroller').style.transform = 'translateY(' + (-target) + 'px)';
+  }
+
+  function pos(c) { return { x: c.offsetLeft, y: c.offsetTop + c.parentNode.offsetTop }; }
+
+  // Navegação geométrica: funciona mesmo com as quebras entre temporadas
+  function moveVertical(dir) {
+    var cur = pos(cards[focusIdx]), bestRow = null, best = -1, bestDx = 1e9, i, p;
+    for (i = 0; i < cards.length; i++) {
+      p = pos(cards[i]);
+      if (dir > 0 ? p.y <= cur.y + 2 : p.y >= cur.y - 2) continue;
+      if (bestRow === null || (dir > 0 ? p.y < bestRow : p.y > bestRow)) bestRow = p.y;
+    }
+    if (bestRow === null) return;
+    for (i = 0; i < cards.length; i++) {
+      p = pos(cards[i]);
+      if (Math.abs(p.y - bestRow) > 2) continue;
+      var dx = Math.abs(p.x - cur.x);
+      if (dx < bestDx) { bestDx = dx; best = i; }
+    }
+    if (best >= 0) setFocus(best);
+  }
+
+  // ---------- Player ----------
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+  window.onYouTubeIframeAPIReady = function () { ytReady = true; if (pendingId) createPlayer(pendingId); };
+
+  function createPlayer(id) {
+    player = new YT.Player('player', {
+      videoId: id,
+      host: 'https://www.youtube-nocookie.com',
+      playerVars: { autoplay: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, playsinline: 1,
+                    origin: window.location.origin },
+      events: {
+        onReady: function () { playerReady = true; player.playVideo(); },
+        onStateChange: onState,
+        onError: function (e) {
+          showOverlay('⚠', 'Esse episódio não abriu agora');
+          setTimeout(backToCatalog, 3500);
+        }
+      }
+    });
+  }
+
+  function showOverlay(icon, msg) {
+    $('ovNum').textContent = current ? current.n : '';
+    $('ovIcon').textContent = icon; $('ovMsg').textContent = msg || '';
+    $('overlay').className = 'show';
+  }
+  function hideOverlay() { $('overlay').className = ''; }
+
+  function play(i) {
+    current = episodes[i];
+    state.last = i; save();
+    mode = 'player';
+    $('playerWrap').className = 'show';
+    showOverlay('▶', '');
+    if (playerReady) player.loadVideoById(current.id);
+    else if (ytReady && !player) createPlayer(current.id);
+    else pendingId = current.id;
+  }
+
+  function onState(e) {
+    if (mode !== 'player') return;
+    if (e.data === YT.PlayerState.PLAYING) hideOverlay();
+    else if (e.data === YT.PlayerState.PAUSED) showOverlay('⏸', '');
+    else if (e.data === YT.PlayerState.ENDED) {
+      // Nunca mostra a tela final do YouTube: volta ao catálogo, já no próximo episódio
+      state.watched[current.id] = 1; save();
+      backToCatalog(true);
+    }
+  }
+
+  function backToCatalog(next) {
+    if (player && playerReady) { try { player.stopVideo(); } catch (e) {} }
+    hideOverlay();
+    $('playerWrap').className = '';
+    mode = 'catalog';
+    var idx = episodes.indexOf(current);
+    if (idx >= 0) {
+      if (cards[idx] && state.watched[current.id] && cards[idx].className.indexOf('watched') < 0) cards[idx].className += ' watched';
+      setFocus(next && idx + 1 < cards.length ? idx + 1 : idx);
+    }
+  }
+
+  function seek(sec) {
+    if (!playerReady) return;
+    player.seekTo(Math.max(0, player.getCurrentTime() + sec), true);
+    toast(sec > 0 ? '⏩' : '⏪');
+  }
+  function toggle() {
+    if (!playerReady) return;
+    if (player.getPlayerState() === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
+  }
+
+  // ---------- Teclas ----------
+  function handleKey(k) {
+    if (mode === 'catalog') {
+      switch (k) {
+        case 'left':  setFocus(focusIdx - 1); break;
+        case 'right': setFocus(focusIdx + 1); break;
+        case 'up':    moveVertical(-1); break;
+        case 'down':  moveVertical(1); break;
+        case 'enter': case 'play': case 'playpause': play(focusIdx); break;
+        case 'back':  notify('exit'); break;
+      }
+    } else {
+      switch (k) {
+        case 'enter': case 'playpause': toggle(); break;
+        case 'play':  if (playerReady) player.playVideo(); break;
+        case 'pause': if (playerReady) player.pauseVideo(); break;
+        case 'left':  case 'rew': seek(-10); break;
+        case 'right': case 'ff':  seek(10); break;
+        case 'back':  case 'stop': backToCatalog(false); break;
+      }
+    }
+  }
+
+  // Teclas vindas do app Tizen
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (d && d.target === 'kids-app' && d.cmd === 'key') handleKey(d.arg);
+  });
+
+  // Teclado do computador (para testar no navegador)
+  var KEYMAP = { 37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'enter', 32: 'playpause', 8: 'back', 27: 'back' };
+  document.addEventListener('keydown', function (e) {
+    var k = KEYMAP[e.keyCode];
+    if (k) { e.preventDefault(); handleKey(k); }
+  });
+
+  // ---------- Início ----------
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', 'episodes.json?v=' + Date.now());
+  xhr.onload = function () {
+    episodes = JSON.parse(xhr.responseText).episodes;
+    render();
+    notify('ready', { count: episodes.length });
+  };
+  xhr.onerror = function () { $('scroller').innerHTML = '<div class="section">Sem internet 😕</div>'; };
+  xhr.send();
+})();
+</script>
+</body>
+</html>

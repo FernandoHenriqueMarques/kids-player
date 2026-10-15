@@ -1,86 +1,61 @@
 /*
- * App Tizen "casca": abre a página do player hospedada e repassa o controle remoto.
+ * App Tizen "casca": abre o app hospedado no GitHub Pages e repassa o controle remoto.
+ * Toda a lógica (catálogo, player) mora na página hospedada: atualizar = git push, sem reinstalar.
  * ES5 de propósito (Tizen 5.0 = Chromium antigo).
  */
-
-// ===== CONFIGURE AQUI =====
-// GitHub Pages:  'https://SEU_USUARIO.github.io/kids-player/player.html'
-// Teste no Mac:  'http://IP_DO_MAC:8000/player.html'
-var PLAYER_URL = 'http://192.168.68.115:8000/player.html';
-var VIDEO_ID   = 'z3hMX65Khtg';
-// ==========================
+var APP_URL = 'https://fernandohenriquemarques.github.io/kids-player/';
 
 var frame = document.getElementById('frame');
 var statusEl = document.getElementById('status');
 var statusTimer = null;
+var ready = false;
 
-function showStatus(text) {
+function showStatus(text, ms) {
   statusEl.textContent = text;
   statusEl.style.display = 'block';
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(function () { statusEl.style.display = 'none'; }, 2500);
-}
-
-function send(cmd, arg) {
-  if (frame.contentWindow) {
-    frame.contentWindow.postMessage({ target: 'kids-player', cmd: cmd, arg: arg }, '*');
-  }
+  if (ms) statusTimer = setTimeout(function () { statusEl.style.display = 'none'; }, ms);
 }
 
 function exitApp() {
   try { tizen.application.getCurrentApplication().exit(); } catch (e) { /* fora da TV */ }
 }
 
-// Registra as teclas de mídia do controle (Enter/setas/Voltar já vêm por padrão)
 function registerKeys() {
   try {
     tizen.tvinputdevice.registerKeyBatch([
-      'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
-      'MediaRewind', 'MediaFastForward'
+      'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaRewind', 'MediaFastForward'
     ]);
-  } catch (e) {
-    showStatus('Teclas de mídia indisponíveis');
-  }
+  } catch (e) { /* fora da TV */ }
 }
 
-var KEY = {
-  ENTER: 13, LEFT: 37, RIGHT: 39, UP: 38, DOWN: 40,
-  BACK: 10009, PLAY_PAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413,
-  REWIND: 412, FAST_FORWARD: 417
+var KEYS = {
+  13: 'enter', 37: 'left', 38: 'up', 39: 'right', 40: 'down',
+  10009: 'back', 10252: 'playpause', 415: 'play', 19: 'pause', 413: 'stop', 412: 'rew', 417: 'ff'
 };
 
 document.addEventListener('keydown', function (e) {
-  switch (e.keyCode) {
-    case KEY.ENTER:
-    case KEY.PLAY_PAUSE: send('toggle'); break;
-    case KEY.PLAY:       send('play'); break;
-    case KEY.PAUSE:      send('pause'); break;
-    case KEY.STOP:       send('stop'); break;
-    case KEY.LEFT:
-    case KEY.REWIND:       send('seek', -10); showStatus('⏪ 10s'); break;
-    case KEY.RIGHT:
-    case KEY.FAST_FORWARD: send('seek', 10);  showStatus('⏩ 10s'); break;
-    case KEY.BACK:       exitApp(); break;
-  }
+  var k = KEYS[e.keyCode];
+  if (!k) return;
+  e.preventDefault();
+  // Se o app hospedado não carregou, Voltar sai direto
+  if (!ready) { if (k === 'back') exitApp(); return; }
+  frame.contentWindow.postMessage({ target: 'kids-app', cmd: 'key', arg: k }, '*');
 });
 
-// Mensagens vindas do player (estado, erros)
 window.addEventListener('message', function (e) {
   var d = e.data;
-  if (!d || d.source !== 'kids-player') return;
-  if (d.type === 'error') showStatus('Erro do YouTube: ' + d.data);
+  if (!d || d.source !== 'kids-app') return;
+  if (d.type === 'ready') { ready = true; clearTimeout(loadTimer); statusEl.style.display = 'none'; }
+  if (d.type === 'exit') exitApp();
 });
 
-// Se a página do player não responder, avisa (útil para debug na TV)
-var readyTimeout = setTimeout(function () {
-  showStatus('Player não carregou. Verifique PLAYER_URL e a internet.');
-}, 15000);
-window.addEventListener('message', function (e) {
-  if (e.data && e.data.source === 'kids-player' && e.data.type === 'ready') clearTimeout(readyTimeout);
-});
+var loadTimer = setTimeout(function () {
+  showStatus('Sem conexão. Verifique a internet e abra o app de novo.');
+}, 20000);
 
 window.onload = function () {
   registerKeys();
-  frame.src = PLAYER_URL + '?v=' + encodeURIComponent(VIDEO_ID);
+  frame.src = APP_URL;
   document.body.focus();
 };
