@@ -6,7 +6,7 @@
 // ===== CONFIGURE AQUI =====
 // GitHub Pages:  'https://SEU_USUARIO.github.io/kids-player/player.html'
 // Teste no Mac:  'http://IP_DO_MAC:8000/player.html'
-var PLAYER_URL = 'http://192.168.68.115:8000/player.html';
+var PLAYER_URL = 'https://SEU_USUARIO.github.io/kids-player/player.html';
 var VIDEO_ID   = 'z3hMX65Khtg';
 // ==========================
 
