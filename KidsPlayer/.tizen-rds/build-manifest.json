@@ -1,0 +1,30 @@
+{
+  "projectDir": "/Users/fernandomarques/Projects/kids-player/KidsPlayer",
+  "timestamp": "2026-10-15T15:35:58.655Z",
+  "hashAlgorithm": "xxh3-128",
+  "input": {
+    "js/main.js": {
+      "hash": "cad90dff01ac83366c9bef1cad7810d8"
+    },
+    "config.xml": {
+      "hash": "adc6bfd83435da14e848f454b906c8c0"
+    },
+    "icon.png": {
+      "hash": "3318e86888375f444b26ca08f7ac97d4"
+    }
+  },
+  "output": {
+    "Debug/projects/KidsPlayer/config.xml": {
+      "hash": "75bad075c3c6c15279cd22e8fbea21d1"
+    },
+    "Debug/projects/KidsPlayer/icon.png": {
+      "hash": "cf88c16be1b1b19d2f35a89fbf34b7a3"
+    },
+    "Debug/projects/KidsPlayer/index.html": {
+      "hash": "887406d0356c03cfbfc58c98a463cbb5"
+    },
+    "Debug/projects/KidsPlayer/js/main.js": {
+      "hash": "daaa4a03bd9d70622d91c58b7444fbdc"
+    }
+  }
+}

@@ -117,13 +117,18 @@
     focusIdx = i;
     cards[i].className += ' focus';
     // Rola para manter o card no terço superior da tela
-    var target = cards[i].offsetTop + cards[i].parentNode.offsetTop - window.innerHeight * 0.28;
+    var target = pos(cards[i]).y - window.innerHeight * 0.28;
     var max = $('scroller').offsetHeight - window.innerHeight;
     target = Math.max(0, Math.min(target, Math.max(0, max)));
     $('scroller').style.transform = 'translateY(' + (-target) + 'px)';
   }
 
-  function pos(c) { return { x: c.offsetLeft, y: c.offsetTop + c.parentNode.offsetTop }; }
+  // Posição do card relativa ao #scroller (soma offsets até ele; não depende de qual elemento é o offsetParent)
+  function pos(c) {
+    var x = 0, y = 0, el = c, sc = $('scroller');
+    while (el && el !== sc) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
+    return { x: x, y: y };
+  }
 
   // Navegação geométrica: funciona mesmo com as quebras entre temporadas
   function moveVertical(dir) {
@@ -154,6 +159,7 @@
       videoId: id,
       host: 'https://www.youtube-nocookie.com',
       playerVars: { autoplay: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, playsinline: 1,
+                    hl: 'pt-BR', persist_hl: 1,
                     origin: window.location.origin },
       events: {
         onReady: function () { playerReady = true; player.playVideo(); },
