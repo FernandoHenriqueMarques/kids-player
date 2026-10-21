@@ -1,9 +1,13 @@
 /*
- * App Tizen "casca": abre o app hospedado no GitHub Pages e repassa o controle remoto.
- * Toda a lógica (catálogo, player) mora na página hospedada: atualizar = git push, sem reinstalar.
+ * App Tizen "casca": abre a página hospedada e repassa o controle remoto.
+ * Toda a lógica (catálogo, player) mora na página hospedada.
  * ES5 de propósito (Tizen 5.0 = Chromium antigo).
+ *
+ * Aponta pro MAC MINI SERVER (rede local), não mais pro GitHub Pages: o app agora toca
+ * vídeos locais com dublagem pt-BR embutida, em vez do embed do YouTube (que nunca
+ * conseguia tocar a faixa dublada). Se o IP mudar, atualizar aqui.
  */
-var APP_URL = 'https://fernandohenriquemarques.github.io/kids-player/';
+var APP_URL = 'http://192.168.68.111/';
 
 var frame = document.getElementById('frame');
 var statusEl = document.getElementById('status');
